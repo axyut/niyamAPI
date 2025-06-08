@@ -24,3 +24,68 @@ go.work.sum
 # env file
 .env
 tmp/
+
+# FROM HUGGINGFACE
+# ---- Python Environment ----
+venv/
+.venv/
+env/
+ENV/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+**/__pycache__/
+
+# ---- VS Code / IDEs ----
+.vscode/
+.idea/
+*.swp
+
+# ---- Jupyter / IPython ----
+.ipynb_checkpoints/
+*.ipynb
+
+# ---- Model & Data Artifacts ----
+*.pth
+*.pt
+*.h5
+*.ckpt
+*.onnx
+*.joblib
+*.pkl
+
+# ---- Hugging Face Cache ----
+~/.cache/huggingface/
+huggingface_cache/
+
+# ---- Logs and Dumps ----
+*.log
+*.out
+*.err
+
+# ---- Build Artifacts ----
+build/
+dist/
+*.egg-info/
+
+# ---- System Files ----
+.DS_Store
+Thumbs.db
+
+# ---- Environment Configs ----
+.env
+.env.*
+
+# ---- Project-specific ----
+Ai-Text-Detector/
+HuggingFace/model/
+
+# ---- Node Projects (if applicable) ----
+node_modules/
+model/
+models/.gitattributes  #<-- This line can stay if you only want to ignore that file, not the whole folder
+
+todo.md
+np_text_model
+IMG_models
