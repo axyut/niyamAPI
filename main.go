@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -16,129 +15,94 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/joho/godotenv"
 
-	_ "github.com/danielgtaylor/huma/v2/formats/cbor"
+	// IMPORTANT: Adjust these import paths to match your Go module path
+	// (e.g., github.com/your-username/your-repo-name/internal/...)
+	"github.com/axyut/niyamAPI/internal/config"
+	"github.com/axyut/niyamAPI/internal/db"
+	"github.com/axyut/niyamAPI/internal/handler"
+	"github.com/axyut/niyamAPI/internal/service"
+	"github.com/axyut/niyamAPI/internal/utils"
+
+	_ "github.com/danielgtaylor/huma/v2/formats/cbor" // Huma format package for CBOR
 )
 
-var startTime = time.Now()
-
-type MetadataOutput struct {
-	Body struct {
-		Service       string          `json:"service" example:"My API"`
-		Version       string          `json:"version" example:"v1"`
-		Description   string          `json:"description" example:"API description"`
-		Status        string          `json:"status" example:"operational"`
-		Uptime        string          `json:"uptime" example:"8d 19h 16m"`
-		Health        HealthStatus    `json:"health"`
-		Documentation string          `json:"documentation" example:"/docs"`
-		Links         MetadataLinks   `json:"links"`
-		Contact       MetadataContact `json:"contact"`
-		Environment   string          `json:"environment" example:"development"`
-	}
-}
-
-type HealthStatus struct {
-	Database string  `json:"database" example:"ok"`
-	Server   string  `json:"server" example:"ok"`
-	Load     float64 `json:"load" example:"11.35"`
-}
-
-type MetadataLinks struct {
-	Self          string `json:"self" example:"/"`
-	PrivacyPolicy string `json:"privacyPolicy" example:"/api/terms_and_condition"`
-}
-
-type MetadataContact struct {
-	Name  string `json:"name" example:"API Support"`
-	Email string `json:"email" example:"mail@achyutkoirala.com.np"`
-	URL   string `json:"url" example:"/contact"`
-}
-
-type HealthCheckOutput struct {
-	Body struct {
-		Status string `json:"status" example:"healthy" doc:"API health status"`
-	}
-}
-
 func main() {
-	err := godotenv.Load()
+	// 1. Initialize Uptime Tracking
+	// Call this as early as possible in the main function to accurately track
+	// the application's uptime from its true starting point.
+	utils.InitUptime()
+
+	// 2. Load Application Configuration
+	// This step reads environment variables (including those from .env file via godotenv)
+	// and parses them into a structured AppConfig. Fatal exit if essential config is missing.
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Printf("No .env file found or error loading .env: %v. Proceeding without it.", err)
-	} else {
-		log.Println(".env file loaded successfully.")
+		log.Fatalf("FATAL: Failed to load application configuration: %v", err)
 	}
+	log.Printf("INFO: Application environment: %s", cfg.Environment)
+	log.Printf("INFO: Configured API Public URL: %s", cfg.PublicURL)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	// 3. Initialize Database Client
+	// Establish connection to MongoDB using the loaded configuration.
+	// This is a critical dependency, so a fatal exit occurs on failure.
+	dbClient, err := db.NewDBClient(cfg) // Pass configuration to DB client for connection URI
+	if err != nil {
+		log.Fatalf("FATAL: Failed to initialize database client: %v", err)
 	}
-	listenAddr := ":" + port
+	// Defer closing the database connection. This ensures the connection is
+	// gracefully closed when the main function exits (e.g., on shutdown signal).
+	defer func() {
+		if err := dbClient.Close(); err != nil {
+			log.Printf("ERROR: Error closing database client: %v", err)
+		}
+	}()
 
+	// 4. Initialize Services (Business Logic Layer)
+	// Services encapsulate the core business logic of your application. They depend on
+	// external resources like the database client.
+	svc := service.NewServices(dbClient, cfg) // Pass dbClient to the service layer
+
+	// 5. Create new Chi router
+	// Chi is a lightweight, idiomatic router for building HTTP services in Go.
 	router := chi.NewMux()
 
-	// Add chi middleware for request logging and panic recovery
+	// Apply Chi middleware for request logging and panic recovery.
+	// `middleware.Logger` provides structured logging for each incoming HTTP request,
+	// showing method, path, status, and duration.
 	router.Use(middleware.Logger)
-	router.Use(middleware.Recoverer) // Recovers from panics, prevents server crash
+	// `middleware.Recoverer` catches any panics that occur within handlers,
+	// logs the stack trace, and prevents the entire server from crashing,
+	// returning a 500 Internal Server Error to the client.
+	router.Use(middleware.Recoverer)
 
+	// 6. Create Huma API instance
+	// Huma builds on top of Chi (via humachi adapter) to provide powerful features
+	// like automatic OpenAPI 3.0 documentation generation and request/response validation.
 	apiConfig := huma.DefaultConfig("Niyam API", "1.0.0")
 	apiConfig.Info.Description = "API/Backend service for the Niyam application."
+
 	api := humachi.New(router, apiConfig)
 
-	// Root endpoint "/"
-	huma.Get(api, "/", func(ctx context.Context, input *struct{}) (*MetadataOutput, error) {
-		// Calculate uptime
-		uptimeDuration := time.Since(startTime)
-		uptime := fmt.Sprintf("%dd %dh %dm",
-			int(uptimeDuration.Hours()/24),
-			int(uptimeDuration.Hours())%24,
-			int(uptimeDuration.Minutes())%60,
-		)
+	// 7. Register API Handlers
+	// Instantiate the Handlers struct, passing it all its essential dependencies:
+	// application configuration, business services, and the database client.
+	// Then, call its method to register all defined API endpoints with the Huma API.
+	hndlrs := handler.NewHandlers(cfg, svc, dbClient) // Pass config, services, and dbClient to handlers
+	hndlrs.RegisterHandlers(api)
 
-		// Simulated load
-		simulatedLoad := rand.Float64() * 20.0
+	// // 8. Start HTTP Server
+	// // The server listens on the port specified in the configuration.
+	listenAddr := fmt.Sprintf(":%d", cfg.Port)
+	// listener, err := net.Listen("tcp", listenAddr)
+	// if err != nil {
+	// 	log.Fatalf("FATAL: Server failed to listen on %s: %v", listenAddr, err)
+	// }
+	// defer listener.Close() // Ensure the listener is closed when main function exits.
 
-		resp := &MetadataOutput{}
-		resp.Body.Service = apiConfig.Info.Title
-		resp.Body.Version = apiConfig.Info.Version
-		resp.Body.Description = apiConfig.Info.Description
-		resp.Body.Status = "operational"
-		resp.Body.Uptime = uptime
-		resp.Body.Health = HealthStatus{
-			Database: "ok", // TODO: check DB connection
-			Server:   "ok",
-			Load:     simulatedLoad, // TODO: actual calculation of server load
-		}
-		resp.Body.Documentation = "/docs"
-
-		resp.Body.Links = MetadataLinks{
-			Self:          "/",
-			PrivacyPolicy: "/api/terms_and_condition",
-		}
-
-		resp.Body.Contact = MetadataContact{
-			Name:  "API Support",
-			Email: "mail@achyutkoirala.com.np",
-			URL:   "/contact",
-		}
-
-		// Get environment from an ENV var, default to "development"
-		appEnv := os.Getenv("APP_ENV")
-		if appEnv == "" {
-			appEnv = "development"
-		}
-		resp.Body.Environment = appEnv
-
-		return resp, nil
-	})
-
-	// Health Check Endpoint
-	huma.Get(api, "/healthz", func(ctx context.Context, input *struct{}) (*HealthCheckOutput, error) {
-		// log.Println("Health check requested.") // Logger middleware will cover this.
-		resp := &HealthCheckOutput{}
-		resp.Body.Status = "healthy"
-		return resp, nil
-	})
+	// // Log the actual server listening address (e.g., ":7860" or "[::]:7860")
+	// // and the publicly accessible documentation URL, which uses the PublicURL from config.
+	// log.Printf("INFO: Server listening on %s (Access docs at %s/docs)\n", listener.Addr().String(), cfg.PublicURL)
 
 	// Dynamically Get the Actual Host and Port (for logging)
 	listener, err := net.Listen("tcp", listenAddr)
@@ -163,35 +127,50 @@ func main() {
 	// Use the constructed publicBaseURL in the log message
 	log.Printf("Server listening on %s (Access docs at %s/docs)\n", listener.Addr().String(), publicBaseURL)
 
-	// Graceful Shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
+	// Configure the HTTP server with explicit timeouts for read, write, and idle operations.
+	// This helps prevent resource exhaustion and improves server robustness.
 	srv := &http.Server{
-		Addr:         listener.Addr().String(),
-		Handler:      router,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:         listener.Addr().String(), // Server address determined by listener
+		Handler:      router,                   // The Chi router handles all incoming requests
+		ReadTimeout:  5 * time.Second,          // Maximum duration for reading the entire request
+		WriteTimeout: 10 * time.Second,         // Maximum duration before timing out writes of the response
+		IdleTimeout:  120 * time.Second,        // Maximum amount of time to wait for the next request when keep-alives are enabled
 	}
 
+	// Start the HTTP server in a separate goroutine.
+	// This allows the main goroutine to proceed to set up graceful shutdown.
 	go func() {
-		log.Printf("Starting HTTP server on %s...", srv.Addr)
+		log.Printf("INFO: Starting HTTP server on %s...", srv.Addr)
+		// srv.Serve() blocks until the server closes or an error occurs.
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server failed: %v", err)
+			// Log a fatal error if the server fails to start or serve requests unexpectedly,
+			// ensuring the application exits.
+			log.Fatalf("FATAL: HTTP server failed: %v", err)
 		}
-		log.Println("HTTP server stopped.")
+		log.Println("INFO: HTTP server stopped.")
 	}()
 
+	// 9. Graceful Shutdown
+	// Set up a channel to receive OS signals. This allows the application to respond
+	// to termination requests (e.g., Ctrl+C, `docker stop`).
+	quit := make(chan os.Signal, 1)
+	// Notify the 'quit' channel upon receiving SIGINT (Ctrl+C) or SIGTERM (termination request).
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Block the main goroutine until an OS signal is received on the 'quit' channel.
 	sig := <-quit
-	log.Printf("Received signal '%s'. Shutting down server...", sig)
+	log.Printf("INFO: Received signal '%s'. Shutting down server gracefully...", sig)
 
+	// Create a context with a timeout for the graceful shutdown process.
+	// If the server doesn't shut down within this duration, it will be forcefully closed.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	defer cancel() // Ensure the context's cancel function is called to release resources.
 
+	// Attempt to gracefully shut down the HTTP server.
+	// Existing connections are given time to complete before the server is stopped.
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server shutdown failed: %v", err)
+		log.Fatalf("FATAL: Server shutdown failed: %v", err)
 	}
 
-	log.Println("Server gracefully shut down.")
+	log.Println("INFO: Server gracefully shut down.")
 }

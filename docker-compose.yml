@@ -12,4 +12,20 @@ services:
       - .:/app
     # environment:
     # - PORT=7860
+    depends_on:
+      - mongodb
     command: air
+
+  mongodb:
+    image: mongo:latest # Or a specific version like mongo:5.0
+    container_name: niyam-mongodb # Optional, for easier identification
+    ports:
+      - "27017:27017" # Map MongoDB's default port
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db # Persist MongoDB data
+
+volumes:
+  mongodb_data:
