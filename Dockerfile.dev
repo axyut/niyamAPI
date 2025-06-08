@@ -1,0 +1,36 @@
+# Dockerfile (modified for development with 'air')
+
+# Stage 1: Builder
+FROM golang:1.24.2-alpine AS builder
+
+# Set the working directory inside the builder container
+WORKDIR /app
+
+# Enable Go modules and disable CGO for a statically linked binary.
+ENV GO111MODULE=on \
+    CGO_ENABLED=0
+
+# Install 'air' for live reloading (only needed in dev)
+# Make sure to install it before copying all source code if you want to cache this layer.
+RUN go install github.com/air-verse/air@latest
+
+# Copy go.mod and go.sum to leverage Docker's build cache.
+COPY go.mod go.sum ./
+
+# Download Go module dependencies
+RUN go mod download
+
+# We will NOT build here for development, as 'air' will handle it.
+# COPY . .
+# RUN go build -o /app/niyam -ldflags "-s -w" ./main.go
+
+# ---
+
+# Stage 2: Runner (This stage is primarily for production builds.
+# For development, Docker Compose will use the 'builder' stage for live reloading directly.)
+FROM scratch
+
+WORKDIR /app
+COPY --from=builder /app/niyam .
+EXPOSE 8080
+CMD ["./niyam"]

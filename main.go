@@ -40,7 +40,7 @@ func main() {
 	// }
 
 	addr := fmt.Sprintf(":%s", port) // Listen on all interfaces
-	fmt.Printf("Server starting on http://localhost%s...\n", addr)
+	fmt.Printf("Server starting on http://localhost%s/docs\n", addr)
 	err := http.ListenAndServe(addr, router) // <--- THIS IS KEY
 	if err != nil {
 		fmt.Printf("Server failed to start: %v\n", err)

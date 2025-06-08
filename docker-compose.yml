@@ -1,0 +1,20 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev # Refers to your main Dockerfile
+      target: builder # IMPORTANT: Build only the 'builder' stage for dev
+    ports:
+      - "7860:7860" # Map host port 8080 to container port 8080
+    volumes:
+      - .:/app # Mount your current host directory into /app inside the container
+    environment:
+      # Any environment variables your app needs for dev
+      - PORT=7860
+    command: air # Run the 'air' command, which watches files and rebuilds
+    # Optional: If you need to specify the main Go file path for air,
+    # you might need an .air.toml config file, or adjust the command.
+    # By default, air looks for main.go in the current directory or cmd/.

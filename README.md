@@ -1,5 +1,5 @@
 ---
-title: GoAPI
+title: NiyamAPI
 emoji: 🦀
 colorFrom: blue
 colorTo: pink
@@ -10,3 +10,10 @@ pinned: false
 # niyamAPI
 
 System for the Niyam project.
+https://axyut-niyamapi.hf.space/docs
+
+# Run Locally
+
+```bash
+docker compose up --build
+```
