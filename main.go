@@ -33,6 +33,16 @@ func main() {
 		return resp, nil
 	})
 
-	// Start the server!
-	http.ListenAndServe("127.0.0.1:8888", router)
+	port := "7860" // Default port
+	// You might read the port from an environment variable for flexibility
+	// if p := os.Getenv("PORT"); p != "" {
+	//     port = p
+	// }
+
+	addr := fmt.Sprintf(":%s", port) // Listen on all interfaces
+	fmt.Printf("Server starting on http://localhost%s...\n", addr)
+	err := http.ListenAndServe(addr, router) // <--- THIS IS KEY
+	if err != nil {
+		fmt.Printf("Server failed to start: %v\n", err)
+	}
 }
