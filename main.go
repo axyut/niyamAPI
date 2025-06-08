@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -16,13 +17,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	"github.com/shirou/gopsutil/cpu"
+
+	// "github.com/shirou/gopsutil/cpu" // Commented out as per previous request to use simulated load
 
 	_ "github.com/danielgtaylor/huma/v2/formats/cbor"
 )
 
+// Global variable to store the server's start time for uptime calculation.
 var startTime = time.Now()
 
+// MetadataOutput represents the response structure for the root endpoint.
 type MetadataOutput struct {
 	Body struct {
 		Service       string          `json:"service" example:"My API"`
@@ -38,23 +42,28 @@ type MetadataOutput struct {
 	}
 }
 
+// HealthStatus holds health check details.
 type HealthStatus struct {
 	Database string  `json:"database" example:"ok"`
 	Server   string  `json:"server" example:"ok"`
-	Load     float64 `json:"load" example:"11.35"`
+	Load     float64 `json:"load" example:"11.35"` // Simulated load value
 }
 
+// MetadataLinks holds related links.
 type MetadataLinks struct {
 	Self          string `json:"self" example:"/"`
-	PrivacyPolicy string `json:"privacyPolicy" example:"/api/terms_condition"`
+	PrivacyPolicy string `json:"privacyPolicy" example:"/api/terms_and_condition"`
+	// Add more links as needed
 }
 
+// MetadataContact holds contact information.
 type MetadataContact struct {
 	Name  string `json:"name" example:"API Support"`
 	Email string `json:"email" example:"mail@achyutkoirala.com.np"`
 	URL   string `json:"url" example:"/contact"`
 }
 
+// HealthCheckOutput represents the health check response (already defined, kept for consistency).
 type HealthCheckOutput struct {
 	Body struct {
 		Status string `json:"status" example:"healthy" doc:"API health status"`
@@ -62,6 +71,7 @@ type HealthCheckOutput struct {
 }
 
 func main() {
+	// --- 1. Load environment variables from .env file ---
 	err := godotenv.Load()
 	if err != nil {
 		log.Printf("No .env file found or error loading .env: %v. Proceeding without it.", err)
@@ -69,28 +79,29 @@ func main() {
 		log.Println(".env file loaded successfully.")
 	}
 
+	// --- 2. Configuration: Get port from environment variable with a default ---
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // Default port if not specified in .env or actual environment
 	}
 	listenAddr := ":" + port
 
+	// --- 3. Create a new router & API ---
 	router := chi.NewMux()
 
-	// chi middleware for request logging and panic recovery
+	// Add chi middleware for request logging and panic recovery
 	router.Use(middleware.Logger)
-	router.Use(middleware.Recoverer) // recover from panics, prevents server crash
+	router.Use(middleware.Recoverer) // Recovers from panics, prevents server crash
 
 	// Store the Huma config in a variable to access its fields
 	apiConfig := huma.DefaultConfig("Niyam API", "1.0.0")
 	apiConfig.Info.Description = "API/Backend service for the Niyam application."
-	api := humachi.New(router, apiConfig) // Pass the config variable here
+	api := humachi.New(router, apiConfig)
+
+	// --- 4. Register API Handlers ---
 
 	// Root endpoint "/"
 	huma.Get(api, "/", func(ctx context.Context, input *struct{}) (*MetadataOutput, error) {
-		// Log.Println for specific handler entry/exit is now less critical with middleware.Logger
-		// log.Println("Received root metadata request.")
-
 		// Calculate uptime
 		uptimeDuration := time.Since(startTime)
 		uptime := fmt.Sprintf("%dd %dh %dm",
@@ -99,17 +110,8 @@ func main() {
 			int(uptimeDuration.Minutes())%60,
 		)
 
-		// Get actual CPU load percentage
-		cpuPercentages, err := cpu.Percent(time.Second, false)
-		var currentLoad float64
-		if err != nil {
-			log.Printf("Error getting CPU load: %v", err)
-			currentLoad = -1.0 // Indicate error or unknown load
-		} else if len(cpuPercentages) > 0 {
-			currentLoad = cpuPercentages[0] // Get the overall CPU percentage
-		} else {
-			currentLoad = 0.0 // No CPU data or 0%
-		}
+		// Simulated load
+		simulatedLoad := rand.Float64() * 20.0 // Random float between 0.0 and 20.0
 
 		resp := &MetadataOutput{}
 		resp.Body.Service = apiConfig.Info.Title
@@ -118,9 +120,9 @@ func main() {
 		resp.Body.Status = "operational"
 		resp.Body.Uptime = uptime
 		resp.Body.Health = HealthStatus{
-			Database: "ok", // TODO: check DB connection
-			Server:   "ok",
-			Load:     currentLoad,
+			Database: "ok",          // Placeholder: In a real app, check DB connection
+			Server:   "ok",          // Placeholder: Always "ok" if server is responding
+			Load:     simulatedLoad, // Using the simulated load value
 		}
 		resp.Body.Documentation = "/docs"
 
@@ -153,17 +155,33 @@ func main() {
 		return resp, nil
 	})
 
-	// Dynamically Get the Actual Host and Port (for logging)
+	// --- 5. Dynamically Get the Actual Host and Port (for logging) ---
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatalf("Server failed to listen on %s: %v", listenAddr, err)
 	}
 	defer listener.Close()
 
-	actualAddr := listener.Addr().String()
-	log.Printf("Server listening on %s (Access docs at http://localhost%s/docs)\n", actualAddr, listener.Addr().String())
+	// Extract just the port number from the listener's address
+	_, portStr, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		log.Fatalf("Failed to parse listener address: %v", err)
+	}
 
-	// Graceful Shutdown
+	// --- Construct the Base URL for logging without explicit environment checks ---
+	var publicBaseURL string
+	// Attempt to get a public URL from an environment variable first
+	if publicURL := os.Getenv("API_PUBLIC_URL"); publicURL != "" {
+		publicBaseURL = publicURL
+	} else {
+		// Default to localhost for local development if no public URL is provided
+		publicBaseURL = fmt.Sprintf("http://localhost:%s", portStr)
+	}
+
+	// Use the constructed publicBaseURL in the log message
+	log.Printf("Server listening on %s (Access docs at %s/docs)\n", listener.Addr().String(), publicBaseURL)
+
+	// --- 6. Graceful Shutdown ---
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
