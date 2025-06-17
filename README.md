@@ -10,7 +10,7 @@ pinned: false
 # niyamAPI
 
 System for the Niyam project.
-https://axyut-niyam-api.hf.space/docs
+https://niyam.onrender.com
 
 # Setup
 
@@ -36,8 +36,18 @@ air
 
 if you do not have air, install with, `go install github.com/air-verse/air@latest`
 
-## with docker
+## with docker compose
 
 ```bash
 docker compose up --build
+```
+
+## with docker for test
+
+```bash
+docker build -t niyam:latest -f Dockerfile .
+```
+
+```bash
+docker run -p 7860:7860 --env-file .env niyam:latest
 ```
