@@ -17,6 +17,7 @@ type Services struct {
 	// You would define an interface for UserService (e.g., in a user.go file within this package)
 	// and then a concrete implementation (e.g., userService struct) that uses the db.Client.
 	UserService UserService
+	OCRService  OCRService // Assuming you have an OCR service for image processing
 	// GoodsService   GoodsService
 	// TransactionService TransactionService
 	// ProductionService ProductionService
@@ -41,11 +42,7 @@ func NewServices(dbClient *db.Client, config *config.AppConfig /*, add other glo
 		// Assuming you have a `user` package within `internal/service` or `internal/repository`
 		// and a `NewUserService` function that takes a mongo.Database or mongo.Collection.
 		UserService: NewUserService(userRepo, config.JWTSecret),
-		// GoodsService: NewGoodsService(dbClient.Mongo.Database("your_database_name")),
-		// TransactionService: NewTransactionService(dbClient.Mongo.Database("your_database_name")),
-		// ProductionService: NewProductionService(dbClient.Mongo.Database("your_database_name")),
-		// ReportsService: NewReportsService(dbClient.Mongo.Database("your_database_name")),
-		// AudienceService: NewAudienceService(dbClient.Mongo.Database("your_database_name")),
+		OCRService:  NewOCRService(), // Assuming you have an OCR service
 	}
 }
 

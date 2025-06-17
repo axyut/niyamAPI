@@ -125,7 +125,7 @@ func main() {
 	}
 
 	// Use the constructed publicBaseURL in the log message
-	log.Printf("Server listening on %s (Access docs at %s/docs)\n", listener.Addr().String(), publicBaseURL)
+	log.Printf("Server listening on %s (Access docs at %s/docs\n", listener.Addr().String(), publicBaseURL)
 
 	// Configure the HTTP server with explicit timeouts for read, write, and idle operations.
 	// This helps prevent resource exhaustion and improves server robustness.

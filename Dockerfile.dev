@@ -1,27 +1,54 @@
-# Dockerfile (modified for development with 'air')
-FROM golang:1.24.2-alpine AS builder
+# Dockerfile.dev (for development with 'air' and OCR enabled - Simplified User)
 
+# Use a Debian-based Go image. This is a good balance for CGO projects
+# requiring system libraries like Tesseract, as 'apt' handles dependencies well.
+FROM golang:1.24.2-bookworm AS builder
+
+# Set working directory inside the container.
 WORKDIR /app
 
+# Install system dependencies required for Tesseract/gosseract.
+# This includes the Tesseract engine, its development headers, Leptonica development headers,
+# pkg-config, and the specific language data files for English, Nepali, Hindi, and Devanagari.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    libtesseract-dev \
+    libleptonica-dev \
+    pkg-config \
+    tesseract-ocr-eng \
+    tesseract-ocr-nep \
+    tesseract-ocr-hin \
+    tesseract-ocr-script-deva \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# IMPORTANT: CGO_ENABLED MUST BE 1 for gosseract to work.
 ENV GO111MODULE=on \
-    CGO_ENABLED=0
+    CGO_ENABLED=1
 
 # for live reload inside the container
+
+# PKG_CONFIG_PATH helps CGO locate the installed C libraries.
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig
+
+# Install 'air' for live reloading.
 RUN go install github.com/air-verse/air@latest
 
+# Copy go.mod and go.sum first to leverage Docker's build cache.
 COPY go.mod go.sum ./
 
+# Download all Go module dependencies.
+# This step only runs if go.mod or go.sum change.
 RUN go mod download
 
-#  no build for development, air will handle it
-# COPY . .
-# RUN go build -o /app/niyam -ldflags "-s -w" ./main.go
+# Copy the rest of the application source code.
+# This entire directory is where 'air' will watch for changes.
+COPY . .
 
-# ---
+# Expose the port your application listens on.
+ARG PORT=8080
+EXPOSE ${PORT}
 
-FROM scratch
-
-WORKDIR /app
-COPY --from=builder /app/niyam .
-EXPOSE 8080
-CMD ["./niyam"]
+# No CMD here, as the 'command' will be set in docker-compose.yml to run 'air'.
+# 'air' will then handle the building and running of your Go application inside the container.

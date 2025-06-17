@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/niyam"
-  cmd = "go build -o ./tmp/niyam ."
+  cmd = "go build -o ./tmp/niyam -buildvcs=false ." # buildvcs is false now, else throws build error in docker env, working file locally, will figure out later
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", ".git", ".idea", ".vscode"]
   exclude_file = ["README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "Dockerfile", "docker-compose.yml", ".air.toml", ".gitignore", ".dockerignore"]
